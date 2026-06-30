@@ -301,7 +301,23 @@ public:
     return (bytes + ShenandoahHeapRegion::region_size_bytes() - 1) >> ShenandoahHeapRegion::region_size_bytes_shift();
   }
 
-  inline static bool requires_humongous(size_t words) {
+  // Whether an allocation of the given word size must occupy a contiguous run of
+  // humongous regions rather than fitting in a single region.
+  //
+  // may_expand_for_hash must be set only when 'words' is the *base* size of a
+  // freshly allocated, not-yet-hashed object that could later grow by one word
+  // when an identity hash-code is injected as it is copied during GC (see
+  // oopDesc::copy_size). In that case we reserve the extra word up front so the
+  // object is routed to the humongous path if its expanded form would overflow a
+  // region. It must be false (the default) for every size that is already final:
+  //   - the live size of an existing object (obj->size()), which already includes
+  //     the hash word once the object has been expanded by a prior GC copy;
+  //   - an evacuation/promotion copy size (copy_size()), which is already expanded;
+  //   - a raw LAB buffer (TLAB/GCLAB/PLAB), which never grows.
+  inline static bool requires_humongous(size_t words, bool may_expand_for_hash = false) {
+    if (UseCompactObjectHeaders && may_expand_for_hash) {
+      words = align_object_size(words + 1);
+    }
     return words > ShenandoahHeapRegion::RegionSizeWords;
   }
 
